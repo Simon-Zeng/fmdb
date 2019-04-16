@@ -9,6 +9,12 @@
 #import <XCTest/XCTest.h>
 #import "FMDatabaseAdditions.h"
 
+#if FMDB_SQLITE_STANDALONE
+#import <sqlite3/sqlite3.h>
+#else
+#import <sqlite3.h>
+#endif
+
 @interface FMDatabaseAdditionsTests : FMDBTempDBTests
 
 @end
@@ -71,8 +77,19 @@
     XCTAssertEqualWithAccuracy([foo timeIntervalSinceDate:date], 0.0, 1.0, @"Dates should be the same to within a second");
 }
 
-- (void)testTableExists
-{
+- (void)testValidate {
+    NSError *error;
+    XCTAssert([self.db validateSQL:@"create table datetest (a double, b double, c double)" error:&error]);
+    XCTAssertNil(error, @"There should be no error object");
+}
+
+- (void)testFailValidate {
+    NSError *error;
+    XCTAssertFalse([self.db validateSQL:@"blah blah blah" error:&error]);
+    XCTAssert(error, @"There should be no error object");
+}
+
+- (void)testTableExists {
     XCTAssertTrue([self.db executeUpdate:@"create table t4 (a text, b text)"]);
 
     XCTAssertTrue([self.db tableExists:@"t4"]);
@@ -85,8 +102,7 @@
 
 }
 
-- (void)testColumnExists
-{
+- (void)testColumnExists {
     [self.db executeUpdate:@"create table nulltest (a text, b text)"];
     
     XCTAssertTrue([self.db columnExists:@"a" inTableWithName:@"nulltest"]);
@@ -95,10 +111,31 @@
 }
 
 - (void)testUserVersion {
-    
     [[self db] setUserVersion:12];
     
     XCTAssertTrue([[self db] userVersion] == 12);
+}
+
+- (void)testApplicationID {
+#if SQLITE_VERSION_NUMBER >= 3007017
+    uint32_t appID = NSHFSTypeCodeFromFileType(NSFileTypeForHFSTypeCode('fmdb'));
+    
+    [self.db setApplicationID:appID];
+    
+    uint32_t rAppID = [self.db applicationID];
+    
+    XCTAssertEqual(rAppID, appID);
+    
+    [self.db setApplicationIDString:@"acrn"];
+    
+    NSString *s = [self.db applicationIDString];
+    
+    XCTAssertEqualObjects(s, @"acrn");
+#else
+    NSString *errorMessage = NSLocalizedStringFromTable(@"Application ID functions require SQLite 3.7.17", @"FMDB", nil);
+    XCTFail("%@", errorMessage);
+    if (self.db.logsErrors) NSLog(@"%@", errorMessage);
+#endif
 }
 
 @end
